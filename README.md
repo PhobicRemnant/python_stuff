@@ -1,4 +1,6 @@
-# Python stuff
+# Python References
+
+> You're gonna forget everthing, so write it down.
 
 _Experiments with Python so we can have some examples for when we forget what are we doing._
 
