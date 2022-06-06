@@ -4,10 +4,10 @@ from enum import Enum
 
 __version__ = "0.1v"
 
-class Debugger:
+class networkNode:
 
     """
-    Main debugger class that defines a data transmission node serving as client or server.
+    Main TCP/IP communication class that defines a data transmission node serving as client or server.
 
     Args:
 
@@ -27,7 +27,7 @@ class Debugger:
         self.status = None                                              # Node status: Server/Client
         self.conn = None                                                # Client socket connection (Server)
         self.addr = None                                                # Client socket address    (Server)
-
+        self.n_type = None                                              # Node definition type as a client or a server
 
     def packFrame(self,frame):
         """
@@ -64,6 +64,7 @@ class Debugger:
             # Connect to server
             self.s.connect((self.host, self.port))
             print("Connection to viewer successful")
+            self.status = self.StramerStatus.STREAMING
         except:
             # Stop streaming and exit
             print("No viewer connected\nShutting down...")
@@ -74,7 +75,7 @@ class Debugger:
         self.conn, addr = self.s.accept()
         print(f'Client {addr[0]} connected in {addr[1]}.')
         print(f'Starting video feed...')
-        self.status = ViewerStatus.PLAYING
+        self.status = self.ViewerStatus.PLAYING
 
     def serverSideClose(self):
         # Outside the loop 
@@ -138,7 +139,7 @@ class Debugger:
         # Bind socket to port and host
         self.s.bind((self.host, self.port)) 
         # Enter listening mode
-        self.status = ViewerStatus.LISTEN
+        self.status = self.ViewerStatus.LISTEN
         self.s.listen(5)
 
     def displayExit():
@@ -154,19 +155,17 @@ class Debugger:
         self.s.shutdown(socket.SHUT_RD)
         self.s.close()
 
+    class ViewerStatus(Enum):
+        """
+        Different status of a listening debugger
+        """
+        IDLE = 0        # Not connected
+        LISTEN = 1      # Waiting for connection
+        PLAYING = 2     # Playing video feed from streamer
 
-
-class ViewerStatus(Enum):
-    """
-    Different status of a listening debugger
-    """
-    IDLE = 0        # Not connected
-    LISTEN = 1      # Waiting for connection
-    PLAYING = 2     # Playing video feed from streamer
-
-class StramerStatus(Enum):
-    """
-    Different status of a streaming debugger
-    """
-    IDLE = 0        # Not connected
-    STREAMING = 1   # Sending frames to viewer server
+    class StramerStatus(Enum):
+        """
+        Different status of a streaming debugger
+        """
+        IDLE = 0        # Not connected
+        STREAMING = 1   # Sending frames to viewer server
