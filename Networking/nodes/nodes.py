@@ -1,3 +1,4 @@
+from multiprocessing.managers import Server
 import socket, pickle, cv2, struct
 from os import system
 from enum import Enum
@@ -11,8 +12,9 @@ class networkNode:
 
     Args:
 
-    + port: The port numbner for the socket   -> 5678 by default
-    + host: The host IP for the socker        -> localhost by default
+    + port: The port numbner for the socket   
+    + host: The host IP for the socker        
+    + transport: Layer 4 protocol 
 
     """
 
@@ -20,39 +22,36 @@ class networkNode:
 
         self.port = port                                                # TCP port number
         self.host = host                                                # Host IPv4 addr
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)      # Set a TCP/IP service
-        self.buffsize = buffsize                                        # 16KB buffer size
-        self.VGA_RES = (640,480)
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)      # Set socket as TCP by default
+        self.buffsize = buffsize                                        
         self.data = b''                                                 # Data buffer
         self.status = None                                              # Node status: Server/Client
         self.conn = None                                                # Client socket connection (Server)
         self.addr = None                                                # Client socket address    (Server)
-        self.n_type = None                                              # Node definition type as a client or a server
 
-    def packFrame(self,frame):
+    def packData(self,data):
         """
-        Pack frame to be sent over a socket
-        """
-        # Resize in VGA resolution
-        frame = cv2.resize(frame,dsize=self.VGA_RES)                           
+        Pack data to be sent over a socket
+        """                         
         # Serialize frame data 
-        msg = pickle.dumps(frame)
+        msg = pickle.dumps(data)
         print(len(msg))
         # Pack data with a header that contains the data lenght
         pkg = struct.pack("Q", len(msg)) + msg
         
         return pkg
+
     # Streamer client
-    def send_frame(self, frame):
+    def clientSendData(self, data):
         """
             Send debugger in streamer mode, this will connect the debugger with a viewer server
             and start sending video data.
 
             Args: 
-            + frame : OpenCV frame, usually a numpy.array type
+            + Data
         """            
         # Prepare frame for packing
-        pkg = self.packFrame(frame)
+        pkg = self.packData(data)
             
         # Try to send data to viewer if the channel is open
         #try:
@@ -60,6 +59,9 @@ class networkNode:
         self.s.sendall(pkg)      
     
     def clientConnect(self):
+        """
+        Client connect to TCP viewer server
+        """
         try:
             # Connect to server
             self.s.connect((self.host, self.port))
@@ -71,25 +73,29 @@ class networkNode:
             return
         
     def serverWaitConn(self):
+        """
+        Wait for streamer client connection for TCP sockets
+        """
         # Wait for viewer
         self.conn, addr = self.s.accept()
         print(f'Client {addr[0]} connected in {addr[1]}.')
         print(f'Starting video feed...')
-        self.status = self.ViewerStatus.PLAYING
+        self.status = self.ClientStatus.CONNECTED
 
     def serverSideClose(self):
+        """
+        Close server-client connection for TCP sockets
+        """
         # Outside the loop 
         print("Connection terminated")
         # Close connection with client since the stream has ended
         self.conn.close()
-    # Viewer Server
-    def wait_for_frame(self):
+
+    def serverWaitData(self):
         """
         Set debugger in viewer mode, the debugger will wait for a client to send a stream.  
         Will stop playing once the stream stops.
         """
-
- 
         # Wait for the sent payload data
         # Payload size of 8 bytes
         while len(self.data) < struct.calcsize("Q"):
@@ -113,7 +119,7 @@ class networkNode:
             print(f"Exception: {exc}")
             print("Stream sender disconnected")
             print("Going back to listening mode")
-            self.status = ViewerStatus.LISTEN
+            self.status = self.ServerStatus.LISTEN
             return 
 
         while len(self.data) < msg_size:
@@ -124,38 +130,29 @@ class networkNode:
         msg = self.data[:msg_size]
         # Store the read data to be read on the next iteration
         self.data = self.data[msg_size:]
-        # Get the sent frame
-        frame = pickle.loads(msg)
+        # Return data
+        return pickle.loads(msg)
 
-        # Show frame to local screen debug
-        cv2.imshow("Video Feed",frame)
-        # Set 60FPS in the video display
-        cv2.waitKey(16)   
-                
-    def listen(self):
+    def serverListen(self):
 
         print("Debugger entering listening mode")
         print("Listening...")
         # Bind socket to port and host
         self.s.bind((self.host, self.port)) 
         # Enter listening mode
-        self.status = self.ViewerStatus.LISTEN
+        self.status = self.ServerStatus.LISTEN
         self.s.listen(5)
 
-    def displayExit():
-        # After the loop release the cap object
-        cv2.destroyAllWindows()
-
-    def close(self,):
+    def endNode(self,):
         """
-        Close 
+        Close TC
         """
         print("Shutting down")
         # Close transmission with server
         self.s.shutdown(socket.SHUT_RD)
         self.s.close()
 
-    class ViewerStatus(Enum):
+    class ServerStatus(Enum):
         """
         Different status of a listening debugger
         """
@@ -163,9 +160,10 @@ class networkNode:
         LISTEN = 1      # Waiting for connection
         PLAYING = 2     # Playing video feed from streamer
 
-    class StramerStatus(Enum):
+    class ClientStatus(Enum):
         """
         Different status of a streaming debugger
         """
         IDLE = 0        # Not connected
-        STREAMING = 1   # Sending frames to viewer server
+        TRANSMIT = 1    # Sending frames to server
+        RECV = 2        # Receiving data from server
